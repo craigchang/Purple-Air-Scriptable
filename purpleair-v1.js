@@ -1,5 +1,6 @@
-// purpleair.js
-// Uses the Purple Air API (api.purpleair.com/v1/sensors) with API key. Requires "sensorIndex:apiKey" in widget parameter.
+// purpleair-v1.js (legacy)
+// Uses the legacy public JSON endpoint only (www.purpleair.com/json).
+// Widget parameter: sensor index only (e.g. 123456).
 
 // Depending on a user selection, performs one of two actions:
 // 1. Compute the air quality index for the sensor id  the air quality index (AQI) for the sensor id provided in a param
@@ -30,28 +31,17 @@ const P = {
     }
   }
 
-  // Widget parameter: "sensorIndex:apiKey" (API key from develop.purpleair.com)
-  let param = args.widgetParameter || ""
-  let sensorIndex = param
-  let apiKey = null
-  if (param.includes(":")) {
-    const parts = param.split(":")
-    sensorIndex = parts[0]
-    apiKey = parts.slice(1).join(":")
-  }
-
-  let req = new Request(`https://api.purpleair.com/v1/sensors/${sensorIndex}`)
-  req.headers = { "X-API-Key": apiKey }
-  let data = await req.loadJSON()
-
-  // Current API schema: { sensor: { name, pm2.5?, stats: { pm2.5, pm2.5_10minute, ... } } }
-  let sensor = data?.sensor || data
-  let sensorName = sensor.name ?? sensor.label ?? `Sensor ${sensorIndex}`
-  let stats = sensor.stats || {}
-  let conc_PM25 = sensor["pm2.5"] ?? stats["pm2.5"] ?? 0
-  let pm25Averages = getPM25AveragesByTimeRange(stats)
+  let param = args.widgetParameter || ""  // sensor index
+  let req = new Request("https://www.purpleair.com/json?" + param)
+  let json = await req.loadJSON()
 
   if (config.runsInWidget) {
+    // get current PM2.5 value from json (legacy: results[0].PM2_5Value, Stats, Label)
+    let conc_PM25 = json?.results[0]['PM2_5Value']
+    let stats = JSON.parse(json?.results[0]['Stats'])
+    let pm25Averages = getPM25AveragesByTimeRange(stats)
+
+    // calculates AQI
     let aqi = 0
     let cat = ""
     let bgColor = ""
@@ -59,26 +49,35 @@ const P = {
       [aqi, cat, bgColor] = calculateAQI('PM25', conc_PM25)
     }
 
+    // trend: up if current > 10min average
     let trend = pm25Averages.pm25Current > pm25Averages.pm25Avg10Min ? "\u2191" : "\u2193"
 
+    // create and show widget
     let widget = createWidget(
       "Purple Air",
       `${Math.round(aqi)} ${trend}`,
-      `Sensor Name`,
       `${cat}`,
       `${conc_PM25} PM2.5`,
       `${bgColor}`
     )
     Script.setWidget(widget)
     Script.complete()
-  } else {
+  } else { // non-widget mode
+    let sensorLocation = json?.results[0]['Label']
+    let stats = JSON.parse(json?.results[0]['Stats'])
+    // Average PM2.5 by time range (legacy stats: pm, v1–v6)
+    let pm25Averages = getPM25AveragesByTimeRange(stats)
+
+    // create table
     let table = new UITable()
 
+    // add header
     let row = new UITableRow()
     row.isHeader = true
-    row.addText(`Purple Air Stats in {sensor name}`)
+    row.addText(`Purple Air Stats in ${sensorLocation}`)
     table.addRow(row)
 
+    // fill data: average PM2.5 stats by time range
     table.addRow(createRow("Real time or current", calculateAQI('PM25', pm25Averages.pm25Current)[0]))
     table.addRow(createRow("10 minute average", calculateAQI('PM25', pm25Averages.pm25Avg10Min)[0]))
     table.addRow(createRow("30 minute average", calculateAQI('PM25', pm25Averages.pm25Avg30Min)[0]))
@@ -87,6 +86,7 @@ const P = {
     table.addRow(createRow("24 hour average", calculateAQI('PM25', pm25Averages.pm25Avg24Hour)[0]))
     table.addRow(createRow("One week average", calculateAQI('PM25', pm25Averages.pm25Avg1Week)[0]))
 
+    // present table
     table.present()
   }
 
@@ -99,7 +99,7 @@ const P = {
   }
 
   // Helper function to create widget interface in iOS
-  function createWidget(pretitle, aqi, sensorName, cat, pm25, color) {
+  function createWidget(pretitle, aqi, cat, pm25, color) {
     let w = new ListWidget()
     w.backgroundColor = new Color(color)
     w.spacing = 0
@@ -107,16 +107,14 @@ const P = {
     createWidgetRow(w, pretitle, textColor, 1, 15, true)
     w.addSpacer(-5)
     createWidgetRow(w, aqi, textColor, 1, 44)
-    w.addSpacer(14)
-    createWidgetRow(w, sensorName, textColor, 1, 15)
-    w.addSpacer(1)
+    w.addSpacer(30)
     createWidgetRow(w, cat, textColor, 1, 15)
     w.addSpacer(1)
     createWidgetRow(w, pm25, textColor, 1, 15)
     return w
   }
 
-  // Returns average PM2.5 stats by time range from current API schema (stats.pm2.5, stats.pm2.5_10minute, etc.).
+  // Returns average PM2.5 stats by time range from legacy API (pm, v1–v6).
   function getPM25AveragesByTimeRange(stats) {
     if (!stats) {
       return {
@@ -125,13 +123,13 @@ const P = {
       }
     }
     return {
-      pm25Current: stats["pm2.5"] ?? 0,
-      pm25Avg10Min: stats["pm2.5_10minute"] ?? 0,
-      pm25Avg30Min: stats["pm2.5_30minute"] ?? 0,
-      pm25Avg1Hour: stats["pm2.5_60minute"] ?? 0,
-      pm25Avg6Hour: stats["pm2.5_6hour"] ?? 0,
-      pm25Avg24Hour: stats["pm2.5_24hour"] ?? 0,
-      pm25Avg1Week: stats["pm2.5_1week"] ?? 0
+      pm25Current: stats.pm ?? 0,
+      pm25Avg10Min: stats.v1 ?? 0,
+      pm25Avg30Min: stats.v2 ?? 0,
+      pm25Avg1Hour: stats.v3 ?? 0,
+      pm25Avg6Hour: stats.v4 ?? 0,
+      pm25Avg24Hour: stats.v5 ?? 0,
+      pm25Avg1Week: stats.v6 ?? 0
     }
   }
 
