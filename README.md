@@ -5,11 +5,11 @@ An automated iOS script for real time air quality monitoring using Purple Air AP
 
 **Widget mode** — AQI and trend on the home screen:
 
-![Purple Air widget](purpleairwidget.PNG)
+<img src="purpleairwidget.PNG" width="280" alt="Purple Air widget" />
 
 **Non-widget mode** — Run from the Scriptable app to see a table of PM2.5 averages by time range:
 
-![Purple Air non-widget (table)](purpleairnonwidget.PNG)
+<img src="purpleairnonwidget.PNG" width="280" alt="Purple Air non-widget table" />
 
 ---
 
