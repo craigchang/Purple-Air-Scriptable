@@ -24,46 +24,46 @@ const PM25_BREAKPOINTS = [
 const UP_ARROW = "\u2191"
 const DOWN_ARROW = "\u2193"
 
-function main() {
-  // Widget parameter: "sensorIndex:apiKey" (API key from develop.purpleair.com)
-  let param = args.widgetParameter || ""
-  let sensorIndex = param
-  let apiKey = null 
-  if (param.includes(":")) {
-    const parts = param.split(":")
-    sensorIndex = parts[0]
-    apiKey = parts.slice(1).join(":")
-  }
-  let searchParams = 'fields=name,pm2.5,pm2.5_10minute,pm2.5_30minute,pm2.5_60minute,pm2.5_6hour,pm2.5_24hour,pm2.5_1week'
-  let req = new Request(`https://api.purpleair.com/v1/sensors/${sensorIndex}?${searchParams}`)
-  req.headers = { "X-API-Key": apiKey }
-  let data = req.loadJSON()
 
-  // Current API schema: { sensor: { name, pm2.5?, stats: { pm2.5, pm2.5_10minute, ... } } }
-  let sensor = data?.sensor || data
-  let sensorName = sensor.name ?? sensor.label ?? `Sensor ${sensorIndex}`
-  let stats = sensor.stats || {}
-  let conc_PM25 = sensor["pm2.5"] ?? stats["pm2.5"] ?? 0
-  let pm25Averages = getPM25AveragesByTimeRange(stats)
-
-  if (config.runsInWidget) {
-    let {aqi, category, bgColor} = calculateAQI(conc_PM25)
-    let trend = pm25Averages.pm25Current > pm25Averages.pm25Avg10Min ? UP_ARROW : DOWN_ARROW
-    let widget = createWidget(
-      "Purple Air",
-      `${Math.round(aqi)} ${trend}`,
-      `Sensor ${sensorIndex}`,
-      `${category}`,
-      `PM2.5: ${conc_PM25}`,
-      `${bgColor}`
-    )
-    Script.setWidget(widget)
-    Script.complete()
-  } else {
-    table = createUITable(sensorName, pm25Averages)
-    table.present()
-  }
+// Widget parameter: "sensorIndex:apiKey" (API key from develop.purpleair.com)
+let param = args.widgetParameter || ""
+let sensorIndex = param
+let apiKey = null 
+if (param.includes(":")) {
+  const parts = param.split(":")
+  sensorIndex = parts[0]
+  apiKey = parts.slice(1).join(":")
 }
+let searchParams = 'fields=name,pm2.5,pm2.5_10minute,pm2.5_30minute,pm2.5_60minute,pm2.5_6hour,pm2.5_24hour,pm2.5_1week'
+let req = new Request(`https://api.purpleair.com/v1/sensors/${sensorIndex}?${searchParams}`)
+req.headers = { "X-API-Key": apiKey }
+let data = await req.loadJSON()
+
+// Current API schema: { sensor: { name, pm2.5?, stats: { pm2.5, pm2.5_10minute, ... } } }
+let sensor = data?.sensor || data
+let sensorName = sensor.name ?? sensor.label ?? `Sensor ${sensorIndex}`
+let stats = sensor.stats || {}
+let conc_PM25 = sensor["pm2.5"] ?? stats["pm2.5"] ?? 0
+let pm25Averages = getPM25AveragesByTimeRange(stats)
+
+if (config.runsInWidget) {
+  let {aqi, category, bgColor} = calculateAQI(conc_PM25)
+  let trend = pm25Averages.pm25Current > pm25Averages.pm25Avg10Min ? UP_ARROW : DOWN_ARROW
+  let widget = createWidget(
+    "Purple Air",
+    `${Math.round(aqi)} ${trend}`,
+    `Sensor ${sensorIndex}`,
+    `${category}`,
+    `PM2.5: ${conc_PM25}`,
+    `${bgColor}`
+  )
+  Script.setWidget(widget)
+  Script.complete()
+} else {
+  table = createUITable(sensorName, pm25Averages)
+  table.present()
+}
+
 
 // Helper function to create rows in UI table when script runs
 function createTableRow(fieldName, avg) {
@@ -156,5 +156,3 @@ function calculateAQI(concentration) {
     bgColor: color
   }
 }
-
-main()
