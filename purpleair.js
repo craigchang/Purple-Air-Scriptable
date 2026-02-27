@@ -8,41 +8,36 @@
 // Reference: https://en.wikipedia.org/wiki/Air_quality_index
 
 // Future enchancements
-// 1. Increase/Decrease indicator
-// 2. Calculation to dynamically change color based on AQI value
+// Calculation to dynamically change color based on AQI value
+// Support additional pollutants other than PM2.5
 
 // store low/high concentrations for pollutants in all categories
-// c1 = Good
-// c2 = Moderate
-// c3 = Unhealthy for sensitive groups
-// c4 = Unhealthy
-// c5 = Very Unhealthy
-// c6,c7 = Hazardous
-const P = {
-    'PM25': {
-      'c1': [0.0, 12.0],
-      'c2': [12.1, 35.4],
-      'c3': [35.5, 55.4],
-      'c4': [55.5, 150.4],
-      'c5': [150.5, 250.4],
-      'c6': [250.5, 350.4],
-      'c7': [350.5, 500.4]
-    }
-  }
+const PM25_BREAKPOINTS = [
+  { concLow: 0,     concHigh: 12.0,  aqiLow: 0,   aqiHigh: 50,  category: 'Good',                           color: '#53d769' },
+  { concLow: 12.1,  concHigh: 35.4,  aqiLow: 51,  aqiHigh: 100, category: 'Moderate',                       color: '#dddd55' },
+  { concLow: 35.5,  concHigh: 55.4,  aqiLow: 101, aqiHigh: 150, category: 'Unhealthy for Sensitive Groups', color: '#ef8533' },
+  { concLow: 55.5,  concHigh: 150.4, aqiLow: 151, aqiHigh: 200, category: 'Unhealthy',                      color: '#ea3324' },
+  { concLow: 150.5, concHigh: 250.4, aqiLow: 201, aqiHigh: 300, category: 'Very Unhealthy',                 color: '#8c1a4b' },
+  { concLow: 250.5, concHigh: 350.4, aqiLow: 301, aqiHigh: 400, category: 'Hazardous',                      color: '#731425' },
+  { concLow: 350.5, concHigh: 500.4, aqiLow: 401, aqiHigh: 500, category: 'Hazardous',                      color: '#731425' }
+]
+const UP_ARROW = "\u2191"
+const DOWN_ARROW = "\u2193"
 
+function main() {
   // Widget parameter: "sensorIndex:apiKey" (API key from develop.purpleair.com)
   let param = args.widgetParameter || ""
   let sensorIndex = param
-  let apiKey = null
+  let apiKey = null 
   if (param.includes(":")) {
     const parts = param.split(":")
     sensorIndex = parts[0]
     apiKey = parts.slice(1).join(":")
   }
-
-  let req = new Request(`https://api.purpleair.com/v1/sensors/${sensorIndex}`)
+  let searchParams = 'fields=name,pm2.5,pm2.5_10minute,pm2.5_30minute,pm2.5_60minute,pm2.5_6hour,pm2.5_24hour,pm2.5_1week'
+  let req = new Request(`https://api.purpleair.com/v1/sensors/${sensorIndex}?${searchParams}`)
   req.headers = { "X-API-Key": apiKey }
-  let data = await req.loadJSON()
+  let data = req.loadJSON()
 
   // Current API schema: { sensor: { name, pm2.5?, stats: { pm2.5, pm2.5_10minute, ... } } }
   let sensor = data?.sensor || data
@@ -52,139 +47,114 @@ const P = {
   let pm25Averages = getPM25AveragesByTimeRange(stats)
 
   if (config.runsInWidget) {
-    let aqi = 0
-    let cat = ""
-    let bgColor = ""
-    {
-      [aqi, cat, bgColor] = calculateAQI('PM25', conc_PM25)
-    }
-
-    let trend = pm25Averages.pm25Current > pm25Averages.pm25Avg10Min ? "\u2191" : "\u2193"
-
+    let {aqi, category, bgColor} = calculateAQI(conc_PM25)
+    let trend = pm25Averages.pm25Current > pm25Averages.pm25Avg10Min ? UP_ARROW : DOWN_ARROW
     let widget = createWidget(
       "Purple Air",
       `${Math.round(aqi)} ${trend}`,
-      `Sensor Name`,
-      `${cat}`,
-      `${conc_PM25} PM2.5`,
+      `Sensor ${sensorIndex}`,
+      `${category}`,
+      `PM2.5: ${conc_PM25}`,
       `${bgColor}`
     )
     Script.setWidget(widget)
     Script.complete()
   } else {
-    let table = new UITable()
-
-    let row = new UITableRow()
-    row.isHeader = true
-    row.addText(`Purple Air Stats in {sensor name}`)
-    table.addRow(row)
-
-    table.addRow(createRow("Real time or current", calculateAQI('PM25', pm25Averages.pm25Current)[0]))
-    table.addRow(createRow("10 minute average", calculateAQI('PM25', pm25Averages.pm25Avg10Min)[0]))
-    table.addRow(createRow("30 minute average", calculateAQI('PM25', pm25Averages.pm25Avg30Min)[0]))
-    table.addRow(createRow("1 hour average", calculateAQI('PM25', pm25Averages.pm25Avg1Hour)[0]))
-    table.addRow(createRow("6 hour average", calculateAQI('PM25', pm25Averages.pm25Avg6Hour)[0]))
-    table.addRow(createRow("24 hour average", calculateAQI('PM25', pm25Averages.pm25Avg24Hour)[0]))
-    table.addRow(createRow("One week average", calculateAQI('PM25', pm25Averages.pm25Avg1Week)[0]))
-
+    table = createUITable(sensorName, pm25Averages)
     table.present()
   }
+}
 
-  // Helper function to create rows in the widget interface in iOS
-  function createWidgetRow(widget, title, color, textOpacity, fontSize, isBold) {
-    let preTxt = widget.addText(title)
-    preTxt.textColor = color
-    preTxt.textOpacity = textOpacity
-    preTxt.font = isBold ? Font.boldSystemFont(fontSize) : Font.systemFont(fontSize)
-  }
+// Helper function to create rows in UI table when script runs
+function createTableRow(fieldName, avg) {
+  let row = new UITableRow()
+  row.addText(fieldName)
+  row.addText(avg.toString()).rightAligned()
+  return row
+}
 
-  // Helper function to create widget interface in iOS
-  function createWidget(pretitle, aqi, sensorName, cat, pm25, color) {
-    let w = new ListWidget()
-    w.backgroundColor = new Color(color)
-    w.spacing = 0
-    textColor = Color.white()
-    createWidgetRow(w, pretitle, textColor, 1, 15, true)
-    w.addSpacer(-5)
-    createWidgetRow(w, aqi, textColor, 1, 44)
-    w.addSpacer(14)
-    createWidgetRow(w, sensorName, textColor, 1, 15)
-    w.addSpacer(1)
-    createWidgetRow(w, cat, textColor, 1, 15)
-    w.addSpacer(1)
-    createWidgetRow(w, pm25, textColor, 1, 15)
-    return w
-  }
+// Helper function to create UI Table when script runs
+function createUITable(sensorName, pm25Averages) {
+  let table = new UITable()
+  let tableRowHeader = new UITableRow()
+  tableRowHeader.isHeader = true
+  tableRowHeader.addText(`Purple Air Stats in ${sensorName}`)
+  table.addRow(tableRowHeader)
+  table.addRow(createTableRow("Real time or current", calculateAQI(pm25Averages.pm25Current).aqi))
+  table.addRow(createTableRow("10 minute average", calculateAQI(pm25Averages.pm25Avg10Min).aqi))
+  table.addRow(createTableRow("30 minute average", calculateAQI(pm25Averages.pm25Avg30Min).aqi))
+  table.addRow(createTableRow("1 hour average", calculateAQI(pm25Averages.pm25Avg1Hour).aqi))
+  table.addRow(createTableRow("6 hour average", calculateAQI(pm25Averages.pm25Avg6Hour).aqi))
+  table.addRow(createTableRow("24 hour average", calculateAQI(pm25Averages.pm25Avg24Hour).aqi))
+  table.addRow(createTableRow("One week average", calculateAQI(pm25Averages.pm25Avg1Week).aqi))
+  return table
+}
 
-  // Returns average PM2.5 stats by time range from current API schema (stats.pm2.5, stats.pm2.5_10minute, etc.).
-  function getPM25AveragesByTimeRange(stats) {
-    if (!stats) {
-      return {
-        pm25Current: 0, pm25Avg10Min: 0, pm25Avg30Min: 0, pm25Avg1Hour: 0,
-        pm25Avg6Hour: 0, pm25Avg24Hour: 0, pm25Avg1Week: 0
-      }
-    }
+// Helper function to create rows in the widget interface in iOS
+function createWidgetRow(widget, title, color, textOpacity, fontSize, isBold) {
+  let preTxt = widget.addText(title)
+  preTxt.textColor = color
+  preTxt.textOpacity = textOpacity
+  preTxt.font = isBold ? Font.boldSystemFont(fontSize) : Font.systemFont(fontSize)
+}
+
+// Helper function to create widget interface in iOS
+function createWidget(pretitle, aqi, sensorName, cat, pm25, color) {
+  let w = new ListWidget()
+  w.backgroundColor = new Color(color)
+  w.spacing = 0
+  textColor = Color.white()
+  createWidgetRow(w, pretitle, textColor, 1, 15, true)
+  w.addSpacer(-5)
+  createWidgetRow(w, aqi, textColor, 1, 44)
+  w.addSpacer(14)
+  createWidgetRow(w, sensorName, textColor, 1, 15)
+  w.addSpacer(1)
+  createWidgetRow(w, cat, textColor, 1, 15)
+  w.addSpacer(1)
+  createWidgetRow(w, pm25, textColor, 1, 15)
+  return w
+}
+
+// Returns average PM2.5 stats by time range from current API schema (stats.pm2.5, stats.pm2.5_10minute, etc.).
+function getPM25AveragesByTimeRange(stats) {
+  if (!stats) {
     return {
-      pm25Current: stats["pm2.5"] ?? 0,
-      pm25Avg10Min: stats["pm2.5_10minute"] ?? 0,
-      pm25Avg30Min: stats["pm2.5_30minute"] ?? 0,
-      pm25Avg1Hour: stats["pm2.5_60minute"] ?? 0,
-      pm25Avg6Hour: stats["pm2.5_6hour"] ?? 0,
-      pm25Avg24Hour: stats["pm2.5_24hour"] ?? 0,
-      pm25Avg1Week: stats["pm2.5_1week"] ?? 0
+      pm25Current: 0, pm25Avg10Min: 0, pm25Avg30Min: 0, pm25Avg1Hour: 0,
+      pm25Avg6Hour: 0, pm25Avg24Hour: 0, pm25Avg1Week: 0
+    }
+  }
+  return {
+    pm25Current: stats["pm2.5"] ?? 0,
+    pm25Avg10Min: stats["pm2.5_10minute"] ?? 0,
+    pm25Avg30Min: stats["pm2.5_30minute"] ?? 0,
+    pm25Avg1Hour: stats["pm2.5_60minute"] ?? 0,
+    pm25Avg6Hour: stats["pm2.5_6hour"] ?? 0,
+    pm25Avg24Hour: stats["pm2.5_24hour"] ?? 0,
+    pm25Avg1Week: stats["pm2.5_1week"] ?? 0
+  }
+}
+
+// Calculates the AQI (air quality index) for PM2.5
+function calculateAQI(concentration) {
+  const breakpoints = PM25_BREAKPOINTS
+  let band = breakpoints[breakpoints.length - 1]
+
+  // determine the concentration within a breakpoint
+  for (const b of breakpoints) {
+    if (concentration <= b.concHigh) {
+      band = b
+      break
     }
   }
 
-  // Helper function to create rows in UI table when script runs
-  function createRow(title, number) {
-    let row = new UITableRow()
-    row.addText(title)
-    row.addText(number.toString()).rightAligned()
-    return row
+  const {aqiLow, aqiHigh, concLow, concHigh, color, category} = band
+  let aqi = Math.min(500, ((aqiHigh - aqiLow) / (concHigh - concLow)) * (concentration - concLow) + aqiLow)
+  return {
+    aqi : aqi.toFixed(2),
+    category, 
+    bgColor: color
   }
+}
 
-  // Determines the low/high indices of air quality
-  function findLowAndHighAQI(p, c) {
-    let between = (val, min, max) => (min <= val && val <= max)
-    let c1 = p['c1']
-    let c2 = p['c2']
-    let c3 = p['c3']
-    let c4 = p['c4']
-    let c5 = p['c5']
-    let c6 = p['c6']
-    let c7 = p['c7']
-
-    if (between(c, c1[0], c1[1]))
-      return [0, 50, c1[0], c1[1], 'Good', "#53d769"]
-    if (between(c, c2[0], c2[1]))
-      return [51, 100, c2[0], c2[1], 'Moderate', "#dddd55"]
-    if (between(c, c3[0], c3[1]))
-      return [101, 150, c3[0], c3[1], 'Unhealthy for sensitive groups', "#ef8533"]
-    if (between(c, c4[0], c4[1]))
-      return [151, 200, c4[0], c4[1], 'Unhealthy', "#ea3324"]
-    if (between(c, c5[0], c5[1]))
-      return [201, 300, c5[0], c5[1], 'Very Unhealthy', "#8c1a4b"]
-    if (between(c, c6[0], c6[1]))
-      return [301, 400, c6[0], c6[1], 'Hazardous', "#731425"]
-    if (between(c, c7[0], c7[1]))
-      return [401, 500, c7[0], c7[1], 'Hazardous', "#731425"]
-
-    return [0,0,0,0]
-  }
-
-  function calculateAQI(pollutant, concentration) {
-    let iLow = 0
-    let iHigh = 0
-    let cLow = 0
-    let cHigh = 0
-    let category = 0
-    let bgColor = ""
-    let aqi = 0
-
-    // wierd js error in scriptable with destructuring, placed a block around it to fix issue
-    {
-      [iLow, iHigh, cLow, cHigh, category, bgColor] = findLowAndHighAQI(P[pollutant], concentration)
-    }
-    aqi = (((iHigh -  iLow) / (cHigh - cLow)) * (concentration - cLow) + iLow).toFixed(2)
-    return [aqi, category, bgColor]
-  }
+main()

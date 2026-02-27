@@ -1,6 +1,15 @@
 # Purple-Air-Scriptable
 An automated iOS script for real time air quality monitoring using Purple Air APIs
 
+## Overview
+
+The Purple Air script fetches PM2.5 data from a [Purple Air](https://purpleair.com) sensor via the v1 API, converts the concentration to the [Air Quality Index (AQI)](https://en.wikipedia.org/wiki/Air_quality_index), and displays it in one of two ways:
+
+- **Widget mode** — Shows AQI, a trend indicator (↑/↓), the sensor name, AQI category, and PM2.5 value on your home screen. The widget background color reflects the AQI level (green for Good, yellow for Moderate, and so on).
+- **Non-widget mode** — When run directly from the Scriptable app, shows a table of PM2.5 averages by time range (real time, 10 min, 30 min, 1 hr, 6 hr, 24 hr, and 1 week) with the corresponding AQI for each.
+
+You provide a sensor index and API key in the widget parameter (`SENSOR_INDEX:API_READ_KEY`), which the script uses to call `GET https://api.purpleair.com/v1/sensors/{sensor_index}` with the `X-API-Key` header.
+
 ## Preview
 
 **Widget mode** — AQI and trend on the home screen:
@@ -52,6 +61,8 @@ To change the sensor or API key later, long-press the widget → **Edit Widget**
 
 To call the Purple Air API (for example, the sensor endpoint), you need to authenticate with an API key created in the Purple Air developer portal.
 
+> **Disclaimer:** Free accounts receive a limited number of API points. When those points run out, additional payment may be required to continue calling the API. Check [develop.purpleair.com](https://develop.purpleair.com/) for current limits and pricing.
+
 ### 1. Create an API key
 
 1. Go to **[develop.purpleair.com](https://develop.purpleair.com/)** and sign in or create an account.
@@ -94,3 +105,15 @@ In the Scriptable widget, set the **Parameter** to:
 - **Sensor + API key:** `SENSOR_INDEX:API_READ_KEY` (e.g. `123456:your-read-key-here`) — uses the authenticated v1 API `GET https://api.purpleair.com/v1/sensors/{sensor_index}` with the `X-API-Key` header set to your key.
 
 Use the colon format when you have a Read key from [develop.purpleair.com](https://develop.purpleair.com/keys); the script will send it in the request header and use the v1 sensor endpoint.
+
+---
+
+## Future enhancements
+
+Planned or potential improvements:
+
+- **Additional pollutants** — Support O3, NO2, CO, and other pollutants beyond PM2.5, with pollutant-specific AQI breakpoints.
+- **Multiple sensors** — Allow comparing or switching between several sensors in one widget or table.
+- **Historical data** — Show trends (e.g., 7-day AQI history) when the Purple Air API exposes it.
+- **Configurable refresh** — Make widget update intervals adjustable (subject to Scriptable/iOS limits).
+- **Accessibility** — Improve contrast, support Dynamic Type, and ensure VoiceOver works well.
